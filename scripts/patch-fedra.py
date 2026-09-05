@@ -80,7 +80,169 @@ def remove_stale_target(makefile: Path, target: str, srcdir: Path) -> None:
     if n:
         write_if_changed(makefile, ns)
         print(f"[stale-target] removed {target} ({n} occurrence(s))")
+def patch_eda_x11_badwindow(fedra_root):
+    import re
+    from pathlib import Path
 
+    path = Path(fedra_root) / "src/libEDA/EdbEDAMainTab.C"
+
+    if not path.exists():
+        print("[skip] EDA X11 BadWindow fix: EdbEDAMainTab.C not found")
+        return False
+
+    text = path.read_text()
+    original = text
+
+    def rewrite_function(src, name, callback):
+        marker = f"void EdbEDAMainTab::{name}("
+        start = src.find(marker)
+
+        if start < 0:
+            raise RuntimeError(f"{name}() not found")
+
+        brace = src.find("{", start)
+
+        if brace < 0:
+            raise RuntimeError(f"{name}(): opening brace not found")
+
+        depth = 0
+        end = None
+
+        for i in range(brace, len(src)):
+            if src[i] == "{":
+                depth += 1
+            elif src[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+
+        if end is None:
+            raise RuntimeError(f"{name}(): closing brace not found")
+
+        block = src[start:end]
+        new_block = callback(block)
+
+        return src[:start] + new_block + src[end:]
+
+    # ---------------------------------------------------------
+    # Track Search:
+    # Don't destroy TGNumberEntryField after gEDA->Redraw().
+    # Hide the window instead.
+    # ---------------------------------------------------------
+
+    def patch_track(block):
+        block = re.sub(
+            r'\s*if\s*\(\s*eIDWindow\s*!=\s*NULL\s*\)\s*'
+            r'eIDWindow->CloseWindow\(\);\s*'
+            r'eIDWindow\s*=\s*NULL\s*;',
+            "",
+            block
+        )
+
+        if "eIDWindow->UnmapWindow();" not in block:
+            old = "gEDA->Redraw();"
+            if old not in block:
+                raise RuntimeError("ExecTrackSearch(): Redraw not found")
+
+            block = block.replace(
+                old,
+                old + "\n    if(eIDWindow) eIDWindow->UnmapWindow();",
+                1
+            )
+
+        return block
+
+    text = rewrite_function(text, "ExecTrackSearch", patch_track)
+
+    # ---------------------------------------------------------
+    # Segment Search: same fix.
+    # ---------------------------------------------------------
+
+    def patch_segment(block):
+        block = re.sub(
+            r'\s*if\s*\(\s*eIDWindow\s*!=\s*NULL\s*\)\s*'
+            r'eIDWindow->CloseWindow\(\);\s*'
+            r'eIDWindow\s*=\s*NULL\s*;',
+            "",
+            block
+        )
+
+        if "eIDWindow->UnmapWindow();" not in block:
+            old = "gEDA->Redraw();"
+            if old not in block:
+                raise RuntimeError("ExecSegmentSearch(): Redraw not found")
+
+            block = block.replace(
+                old,
+                old + "\n    if(eIDWindow) eIDWindow->UnmapWindow();",
+                1
+            )
+
+        return block
+
+    text = rewrite_function(text, "ExecSegmentSearch", patch_segment)
+
+    # ---------------------------------------------------------
+    # Search window:
+    # reuse the existing window and intercept window-manager X.
+    # ---------------------------------------------------------
+
+    def patch_search_gui(block):
+        block = re.sub(
+            r'if\s*\(\s*eIDWindow\s*!=\s*NULL\s*\)\s*\{\s*'
+            r'(?:eIDWindow->MapWindow\(\);\s*)?'
+            r'eIDWindow->RaiseWindow\(\);\s*'
+            r'return;\s*'
+            r'\}',
+            """if(eIDWindow!=NULL) {
+            eIDWindow->MapWindow();
+            eIDWindow->RaiseWindow();
+            return;
+    }""",
+            block,
+            count=1,
+            flags=re.S,
+        )
+
+        if "fMainFrame->DontCallClose();" not in block:
+            marker = "fMainFrame->MapSubwindows();"
+
+            if marker not in block:
+                raise RuntimeError(
+                    "MakeGUIIDSearch(): MapSubwindows not found"
+                )
+
+            close_fix = """// ROOT 6.x / X11 compatibility:
+    // Keep TGNumberEntryField X11 windows alive.
+    // Window-manager close hides the search window instead
+    // of destroying it, preventing BadWindow crashes.
+    fMainFrame->Connect("CloseWindow()",
+                        "TGMainFrame",
+                        fMainFrame,
+                        "UnmapWindow()");
+    fMainFrame->DontCallClose();
+
+    """
+
+            block = block.replace(
+                marker,
+                close_fix + marker,
+                1
+            )
+
+        return block
+
+    text = rewrite_function(text, "MakeGUIIDSearch", patch_search_gui)
+
+    if text == original:
+        print("[ok] EDA X11 BadWindow fix already applied")
+        return False
+
+    path.write_text(text)
+
+    print("[patch] EDA ROOT6/X11 TGNumberEntryField BadWindow fix")
+    return True
 
 def main() -> None:
     if len(sys.argv) != 2:
@@ -230,6 +392,7 @@ def main() -> None:
     remove_stale_target(src / "appl/emrec/Makefile", "emrawcorr", src / "appl/emrec")
     remove_stale_target(src / "appl/emrec/Makefile", "emrawbeammap", src / "appl/emrec")
     remove_stale_target(src / "appl/viewcorr/Makefile", "cp2mos", src / "appl/viewcorr")
+    patch_eda_x11_badwindow(root)
 
     print("[done] FEDRA compatibility patch pass completed.")
     print("[next] Run scripts/build-fedra.sh /path/to/FEDRA_ROOT")

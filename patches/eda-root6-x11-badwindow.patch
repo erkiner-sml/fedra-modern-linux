@@ -1,0 +1,52 @@
+--- a/src/libEDA/EdbEDAMainTab.C
++++ b/src/libEDA/EdbEDAMainTab.C
+@@ -238,10 +238,8 @@ void EdbEDAMainTab::ExecTrackSearch(){
+     EdbTrackP *t = eTrackSet->SearchTrack(itrk);
+     if(t) eTrackSet->AddTrack(t);
+     gEDA->Redraw();
+-
+-    if(eIDWindow!=NULL) eIDWindow->CloseWindow();
+-    eIDWindow = NULL;
++    if(eIDWindow)
++        eIDWindow->UnmapWindow();
+ 
+ }
+ void EdbEDAMainTab::ClearTracks(void) { gEDA->StorePrevious(); eTrackSet->ClearTracks(), gEDA->Redraw();}
+@@ -257,8 +255,8 @@ void EdbEDAMainTab::ExecSegmentSearch(){
+     if(t) eTrackSet->AddTrack(t);
+     else  printf("track not found.\n");
+     gEDA->Redraw();
+-    if(eIDWindow!=NULL) eIDWindow->CloseWindow();
+-    eIDWindow = NULL;
++    if(eIDWindow)
++        eIDWindow->UnmapWindow();
+ 
+ }
+ 
+@@ -264,6 +262,7 @@ void EdbEDAMainTab::MakeGUIIDSearch(){
+ void EdbEDAMainTab::MakeGUIIDSearch(){
+     if(eIDWindow!=NULL) {
++            eIDWindow->MapWindow();
+             eIDWindow->RaiseWindow();
+             return;
+     }
+@@ -304,6 +303,15 @@ void EdbEDAMainTab::MakeGUIIDSearch(){
+     fb->Connect("Clicked()","EdbEDAMainTab",this,"ExecSegmentSearch()");
+ 
+     fMainFrame->SetMWMHints(kMWMDecorAll,
+             kMWMFuncAll,
+             kMWMInputModeless);
++
++    // ROOT 6.x / X11 compatibility.
++    // Do not destroy this window while TGNumberEntryField redraw
++    // events may still be queued.  Destroying it can trigger
++    // BadWindow in TGX11TTF::DrawString().
++    fMainFrame->Connect("CloseWindow()",
++                        "TGMainFrame",
++                        fMainFrame,
++                        "UnmapWindow()");
++    fMainFrame->DontCallClose();
++
+     fMainFrame->MapSubwindows();
+ 
+     fMainFrame->Resize(fMainFrame->GetDefaultSize());
