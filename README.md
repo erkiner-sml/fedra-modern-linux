@@ -195,18 +195,6 @@ Do not commit:
 
 See `THIRD_PARTY.md`.
 
-## Publishing to GitHub
-
-After extracting this repository:
-
-```bash
-git init
-git add .
-git commit -m "Initial FEDRA modern Linux compatibility layer"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/fedra-modern-linux.git
-git push -u origin main
-```
 
 ## License
 
