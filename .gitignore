@@ -1,0 +1,51 @@
+# Build products
+*.o
+*.so
+*.a
+*.pcm
+*.rootmap
+*.d
+*.log
+core
+core.*
+
+# ROOT / reconstruction data
+*.root
+*.rwc
+*.rwd
+*.cp.root
+*.trk.root
+
+# Archives / third-party distributions
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rpm
+*.deb
+
+# Local third-party trees
+root/
+oracle/
+instantclient*/
+fedra/
+
+# Reconstruction work areas
+reco*/
+data/
+ONLINE/
+
+# Local environment
+.env
+.env.*
+*.local
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors
+.vscode/
+.idea/
+*~
+*.swp
